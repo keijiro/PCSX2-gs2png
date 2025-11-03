@@ -4,6 +4,7 @@ gs2png
 src/*.o
 
 # Test files
+/test
 test.gs
 test.png
 *.png

@@ -93,9 +93,6 @@ int main(int argc, char** argv)
 
     printf("VRAM loaded successfully\n");
 
-    // Initialize swizzle tables
-    InitSwizzleTables();
-
     // VRAM parameters
     constexpr u32 VRAM_SIZE = 4 * 1024 * 1024;
     constexpr u32 BYTES_PER_PIXEL = 4;
@@ -133,8 +130,7 @@ int main(int argc, char** argv)
             u8 a = (pixel >> 24) & 0xFF;
 
             // Force alpha if requested
-            if (force_alpha)
-                a = 255;
+            if (force_alpha) a = 255;
 
             // Write to output buffer
             int out_index = (y * vram_width + x) * 4;
