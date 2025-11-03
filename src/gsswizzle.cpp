@@ -27,7 +27,6 @@ static const u8 columnTable32[8][8] =
 // PSMCT32: Pages are 64x32, blocks are 8x8, pixels are 32-bit
 static constexpr int BLOCK_WIDTH = 8;
 static constexpr int BLOCK_HEIGHT = 8;
-static constexpr int GS_MAX_PAGES = 512;
 
 void InitSwizzleTables()
 {
@@ -36,45 +35,34 @@ void InitSwizzleTables()
 
 u32 PixelAddress32(int x, int y, u32 bp, u32 bw)
 {
-    // Direct implementation using pxOffset logic
+    // Pure pxOffset implementation with bp/bw support
     // PSMCT32: Pages are 64x32, blocks are 8x8, pixels are 32-bit
     constexpr int blockSize = 64;     // 8x8 pixels per block
     constexpr int pageSize = 2048;    // 64x32 pixels per page
     constexpr int pageWidth = 64;     // Page width in pixels
-    constexpr int pageHeight = 32;    // Page height in pixels
 
     // Calculate page coordinates
     int pageX = x / pageWidth;
-    int pageY = y / pageHeight;
+    int pageY = y / 32;               // 32 is page height
+    int subpageX = x % pageWidth;
+    int subpageY = y % 32;
 
-    // Calculate position within page
-    int px = x % pageWidth;
-    int py = y % pageHeight;
-
-    // Calculate block coordinates within page
-    int blockX = px / BLOCK_WIDTH;
-    int blockY = py / BLOCK_HEIGHT;
-
-    // Calculate pixel coordinates within block
-    int bx = px % BLOCK_WIDTH;
-    int by = py % BLOCK_HEIGHT;
-
-    // Calculate page number using bp and bw
-    // bp is base pointer in 256-byte blocks (64 pixels at 32bpp)
-    // bw is buffer width in 64-pixel units (pages)
-    int pageNum = bp * 64 / pageSize;  // Convert bp to page units
-    pageNum += pageY * bw + pageX;     // Add page offset
-
-    // Wrap within VRAM bounds (512 pages total)
-    pageNum &= GS_MAX_PAGES - 1;
-
-    // Get block ID from block table
+    // Get block ID (using y within page)
+    int blockX = subpageX / BLOCK_WIDTH;
+    int blockY = subpageY / BLOCK_HEIGHT;
     int blockID = blockTable32[blockY][blockX];
 
-    // Get pixel offset from column table
+    // Get pixel offset (using position within block)
+    int bx = subpageX % BLOCK_WIDTH;
+    int by = subpageY % BLOCK_HEIGHT;
     int pixelOffset = columnTable32[by][bx];
 
-    // Final address calculation
+    // Calculate page number considering bp and bw
+    // bp is base pointer, bw is buffer width in pages
+    int pageNum = static_cast<int>(bp) * 64 / pageSize;  // Convert bp to pages
+    pageNum += pageY * bw + pageX;                         // Add 2D page offset
+
+    // Calculate final address
     int addr = pageNum * pageSize + blockID * blockSize + pixelOffset;
 
     return static_cast<u32>(addr);
