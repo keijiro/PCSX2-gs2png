@@ -1,1 +1,18 @@
-/test
+# Build artifacts
+gs2png
+*.o
+src/*.o
+
+# Test files
+test.gs
+test.png
+*.png
+
+# Source reference (not tracked)
+pcsx2-source/
+
+# Temporary files
+.DS_Store
+*.swp
+*.swo
+*~
