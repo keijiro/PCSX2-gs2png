@@ -1,9 +1,9 @@
-// Minimal PS2 GS VRAM swizzling implementation for PSMCT32
-// Extracted and simplified from PCSX2 (GPL-3.0+)
+// Complete PS2 GS VRAM swizzling implementation for PSMCT32
+// Extracted from PCSX2 (GPL-3.0+)
 #include "gsswizzle.h"
 
 // Block swizzle table for 32-bit format (4x8)
-static const u8 blockTable32_data[4][8] =
+static const u8 blockTable32[4][8] =
 {
     {  0,  1,  4,  5, 16, 17, 20, 21},
     {  2,  3,  6,  7, 18, 19, 22, 23},
@@ -11,7 +11,7 @@ static const u8 blockTable32_data[4][8] =
     { 10, 11, 14, 15, 26, 27, 30, 31}
 };
 
-// Column lookup table
+// Column lookup table for pixels within blocks
 static const u8 columnTable32[8][8] =
 {
     {  0,  1,  4,  5,  8,  9, 12, 13 },
@@ -29,10 +29,43 @@ static constexpr int PAGE_WIDTH = 64;
 static constexpr int PAGE_HEIGHT = 32;
 static constexpr int BLOCK_WIDTH = 8;
 static constexpr int BLOCK_HEIGHT = 8;
+static constexpr int GS_MAX_PAGES = 512;
+
+// Pre-computed column offset table (32 entries for height of page)
+static int pixelColOffset32[32];
+
+// Pre-computed row offset table (64 entries for width of page)
+static int pixelRowOffset32[64];
+
+// Helper function to calculate pixel offset using block and column tables
+static int pxOffset(int x, int y)
+{
+    constexpr int blockSize = 64;     // 8x8 pixels per block
+    constexpr int pageSize = 2048;    // 64x32 pixels per page
+    constexpr int pageWidth = 64;     // 64 pixels wide
+
+    int pageX = x / pageWidth;
+    int subpageX = x % pageWidth;
+    int blockID = blockTable32[y / BLOCK_HEIGHT][subpageX / BLOCK_WIDTH];
+    int sublockOffset = columnTable32[y % BLOCK_HEIGHT][subpageX % BLOCK_WIDTH];
+
+    return pageX * pageSize + blockID * blockSize + sublockOffset;
+}
 
 void InitSwizzleTables()
 {
-    // Tables are static const, no initialization needed
+    // Generate column offset table (for y coordinates within a page)
+    for (int y = 0; y < 32; y++)
+    {
+        pixelColOffset32[y] = pxOffset(0, y);
+    }
+
+    // Generate row offset table (for x coordinates within a page)
+    int base = pxOffset(0, 0);
+    for (int x = 0; x < 64; x++)
+    {
+        pixelRowOffset32[x] = pxOffset(x % 2048, 0) - base;
+    }
 }
 
 u32 PixelAddress32(int x, int y, u32 bp, u32 bw)
@@ -40,41 +73,32 @@ u32 PixelAddress32(int x, int y, u32 bp, u32 bw)
     // bp = base pointer in 256-byte blocks
     // bw = buffer width in 64-pixel units
 
-    // Convert bp from blocks to pixels (256 bytes = 64 pixels at 32bpp)
-    u32 base = bp * 64;
+    // Page shift values for PSMCT32: pageShiftX=6, pageShiftY=5
+    // This means pages are 2^6 = 64 pixels wide, 2^5 = 32 pixels high
+    constexpr int pageShiftX = 6;
+    constexpr int pageShiftY = 5;
+    constexpr int pageMaskY = (1 << pageShiftY) - 1;  // 31
 
-    // Page coordinates
-    int page_x = x / PAGE_WIDTH;
-    int page_y = y / PAGE_HEIGHT;
+    // Calculate base address from bp
+    // bp is in 256-byte blocks, shift by (6+5-5) = 6 to convert to pixels
+    int base = static_cast<int>(bp) << (pageShiftX + pageShiftY - 5);
 
-    // Position within page
-    int px = x % PAGE_WIDTH;
-    int py = y % PAGE_HEIGHT;
+    // Add offset for pages above current row
+    base += ((y & ~pageMaskY) * bw) << pageShiftX;
 
-    // Block coordinates within page
-    int block_x = px / BLOCK_WIDTH;
-    int block_y = py / BLOCK_HEIGHT;
+    // Wrap within VRAM bounds
+    base &= (GS_MAX_PAGES << (pageShiftX + pageShiftY)) - 1;
 
-    // Pixel coordinates within block
-    int bx = px % BLOCK_WIDTH;
-    int by = py % BLOCK_HEIGHT;
+    // Add column offset within page
+    base += pixelColOffset32[y & pageMaskY];
 
-    // Page offset: each page is 64x32 = 2048 pixels
-    // Pages are laid out horizontally first, then vertically
-    u32 page_num = page_y * bw + page_x;
-    u32 page_offset = page_num * (PAGE_WIDTH * PAGE_HEIGHT);
+    // Add row offset
+    int result = base + pixelRowOffset32[x % 64];
 
-    // Block offset within page
-    // Blocks are swizzled using blockTable32
-    u32 block_num = blockTable32_data[block_y % 4][block_x];
-    u32 block_offset = block_num * (BLOCK_WIDTH * BLOCK_HEIGHT);
+    // Handle multiple pages horizontally
+    result += (x / 64) * (PAGE_WIDTH * PAGE_HEIGHT);
 
-    // Pixel offset within block
-    // Pixels are swizzled using columnTable32
-    u32 pixel_offset = columnTable32[by][bx];
-
-    // Final address
-    return base + page_offset + block_offset + pixel_offset;
+    return static_cast<u32>(result);
 }
 
 u32 ReadPixel32(const u8* vram, int x, int y, u32 bp, u32 bw)
