@@ -21,6 +21,10 @@ $(TARGET): $(OBJECTS)
 clean:
 	rm -f $(OBJECTS) $(TARGET)
 
+test: $(TARGET)
+	./$(TARGET) test/test.gs test/test.png -w 640 --force-alpha
+	open test/test.png
+
 # Dependencies
 src/main.o: src/main.cpp include/gsdump.h include/gsswizzle.h include/stb_image_write.h
 src/gsdump.o: src/gsdump.cpp include/gsdump.h include/types.h
