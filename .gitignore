@@ -17,3 +17,5 @@ pcsx2-source/
 *.swp
 *.swo
 *~
+
+/docs

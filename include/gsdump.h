@@ -34,7 +34,7 @@ public:
 
 private:
     static constexpr u32 VRAM_SIZE = 4 * 1024 * 1024;  // 4MB
-    static constexpr u32 VRAM_METADATA_SIZE = 509;      // Bytes before VRAM in freezeData
+    static constexpr u32 VRAM_METADATA_SIZE = 425;
 
     u8* m_vram;
 };
